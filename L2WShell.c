@@ -111,14 +111,13 @@ int main(void)
         fprintf(stderr, "Unable to load L2WShell.dll: %lu\n", GetLastError());
         return 1;
     }
-    parse = (ParseCommandFn)GetProcAddress(dll, "ExecuteCommand");
-    execute = (ExecuteCommandFn)GetProcAddress(dll, "ParseCommand");
+    parse = (ParseCommandFn)GetProcAddress(dll, "ParseCommand");
+    execute = (ExecuteCommandFn)GetProcAddress(dll, "ExecuteCommand");
     if (!parse || !execute) {
         fprintf(stderr, "Missing required DLL export.\n");
         FreeLibrary(dll);
         return 1;
     }
-    FreeLibrary(dll);
     puts("L2WShell - Linux commands on Windows. Type help.");
     for (;;) {
         fputs("l2w> ", stdout);
@@ -136,5 +135,6 @@ int main(void)
         if (dispatch(args, argc, execute) == -1)
             break;
     }
+    FreeLibrary(dll);
     return 0;
 }
