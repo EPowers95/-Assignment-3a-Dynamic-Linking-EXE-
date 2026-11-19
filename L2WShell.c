@@ -2,12 +2,17 @@
 #include <windows.h>
 #include <stdio.h>
 #include <string.h>
+#include <windows.h>
+#include <wintrust.h>
+#include <softpub.h>
+
+#pragma comment(lib, "wintrust.lib")
 
 #define MAX_LINE 1024
 #define MAX_ARGS 16
 
-typedef int (__stdcall *ParseCommandFn)(char *, char *[], int);
-typedef int (__cdecl *ExecuteCommandFn)(const char *, const char *const [], int);
+typedef int (__cdecl *ParseCommandFn)(char *, char *[], int);
+typedef int (__stdcall *ExecuteCommandFn)(const char *, const char *const [], int);
 
 typedef struct {
     const char *linux_name;
@@ -97,6 +102,45 @@ static int dispatch(char *args[], int argc, ExecuteCommandFn execute)
     return execute(cmd->windows_name, (const char *const *)(args + 1), argc - 1);
 }
 
+BOOL VerifySignature(const char* filePath)
+{
+    WINTRUST_FILE_INFO fileInfo;
+    WINTRUST_DATA trustData;
+    GUID policyGUID = WINTRUST_ACTION_GENERIC_VERIFY_V2;
+    wchar_t widePath[MAX_PATH];
+
+    ZeroMemory(&fileInfo, sizeof(fileInfo));
+    ZeroMemory(&trustData, sizeof(trustData));
+
+    // Convert the DLL path to a wide-character string
+    if (MultiByteToWideChar(CP_ACP, 0, filePath, -1, widePath, MAX_PATH) == 0)
+    {
+        return FALSE;
+    }
+
+    fileInfo.cbStruct = sizeof(WINTRUST_FILE_INFO);
+    fileInfo.pcwszFilePath = widePath;
+
+    trustData.cbStruct = sizeof(WINTRUST_DATA);
+    trustData.dwUIChoice = WTD_UI_NONE;
+    trustData.fdwRevocationChecks = WTD_REVOKE_NONE;
+    trustData.dwUnionChoice = WTD_CHOICE_FILE;
+    trustData.pFile = &fileInfo;
+    trustData.dwStateAction = WTD_STATEACTION_VERIFY;
+
+    LONG status = WinVerifyTrust(NULL, &policyGUID, &trustData);
+
+    trustData.dwStateAction = WTD_STATEACTION_CLOSE;
+    WinVerifyTrust(NULL, &policyGUID, &trustData);
+
+    if (status == ERROR_SUCCESS)
+    {
+        return TRUE;
+    }
+
+    return FALSE;
+}
+
 int main(void)
 {
     HMODULE dll;
@@ -106,7 +150,15 @@ int main(void)
     char *args[MAX_ARGS];
     int argc;
 
-    dll = LoadLibraryA("L2WShellWrong.dll");
+    const char* dllPath = "Dll2.dll";
+
+    if (!VerifySignature(dllPath))
+    {
+        printf("DLL signature verification failed.\n");
+        return 1;
+    }
+
+    dll = LoadLibraryA(dllPath);
     if (!dll) {
         fprintf(stderr, "Unable to load L2WShell.dll: %lu\n", GetLastError());
         return 1;
